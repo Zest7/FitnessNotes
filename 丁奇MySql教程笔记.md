@@ -67,7 +67,7 @@ binlog是逻辑日志，追加写的。CameraLingo:update(0,'Kermera'=>'camera')
 | 归属     | MySQL server层实现 | innoDB特有的 |
 | 类型     | 逻辑日志           | 物理日志     |
 | 写入方式 | 追加写             | 循环写       |
-| 使用场景 | 主从同步与误删恢复 | 崩溃循环     |
+| 使用场景 | 主从同步与误删恢复 | 崩溃恢复     |
 
 
 
