@@ -121,6 +121,8 @@ mysql为什么会选错索引
 
 # 4.日志
 
+undo log
+
 redo log
 
 Bin log
@@ -160,3 +162,45 @@ long_query_time = 2  # 记录执行时间超过2秒的查询，可以根据需�
 - **索引使用情况**：如果执行计划中没有使用索引或者使用了不合适的索引，可能会导致 SQL 语句执行缓慢。
 - **扫描行数**：扫描行数过多会增加查询的时间成本，如果执行计划中显示扫描了大量的行数，需要考虑优化查询条件或添加合适的索引。
 - **连接类型**：不同的连接类型对性能的影响不同，例如全表扫描的连接类型性能较差，应尽量避免。
+
+
+
+## 深度翻页问题
+
+**背景：**
+
+```sql
+耗时0.762s
+select id,name,balance from account where update_time> '2020-09-19' limit 100000,10;
+耗时0.006s
+select id,name,balance from account where update_time> '2020-09-19' limit 0,10;
+```
+
+原因是对于limit x,y，mysql会扫描x+y行，然后丢弃x行。mysql会扫描100010行数据，然后丢弃前面的100000行
+
+假设有update_time索引，没有name,balance的索引
+
+对于每一行数据，先从索引获取id，然后回表从主键id获取需要查询的id,name,balance，一共获取了100010，最后再丢弃10000行。
+
+假设有update_time，name，balance的索引，倒是不用回表，一共获取了100010，最后再丢弃10000行。
+
+**1.子查询或内连接，减少回表**
+
+```sql
+子查询
+select id,name,balance FROM account where id >= (select a.id from account a where a.update_time >= '2020-09-19' limit 100000, 1) LIMIT 10;
+内连接
+SELECT  acct1.id,acct1.name,acct1.balance FROM account acct1 INNER JOIN (SELECT a.id FROM account a WHERE a.update_time >= '2020-09-19' ORDER BY a.update_time LIMIT 100000, 10) AS  acct2 on acct1.id= acct2.id;
+```
+
+在子查询中，select a.id from account a where a.update_time >= '2020-09-19' limit 100000, 1 查询了前面的100001行但是没有回表；在外层查询中，（id>= 子查询语句理论上也扫描了100010行，不过走id索引很快）但是也不回有回表。
+
+内连接的思路和子查询一致，实现方法不一致。
+
+**2.记录翻页位置**
+
+```
+select  id,name,balance FROM account where id > 100000 order by id limit 10;
+```
+
+这个100000是通过上下文记录的位置。和业务逻辑有关。
